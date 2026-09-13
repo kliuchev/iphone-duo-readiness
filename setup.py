@@ -5,7 +5,7 @@ setup(
     version="1.0.0",
     description="iPhone Duo iOS Project Readiness Analyzer",
     author="kliuchev",
-    url="https://github.com/kliuchev/duolipa",
+    url="https://github.com/kliuchev/iphone-duo-readiness",
     py_modules=["analyze_ios_duo"],
     package_dir={"": ".agents/skills/iphone-duo-readiness/scripts"},
     entry_points={

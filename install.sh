@@ -2,8 +2,8 @@
 # Universal Installer Script for iPhone Duo Readiness AI Agent Skill
 set -e
 
-REPO_URL="https://github.com/kliuchev/duolipa.git"
-RAW_URL="https://raw.githubusercontent.com/kliuchev/duolipa/main"
+REPO_URL="https://github.com/kliuchev/iphone-duo-readiness.git"
+RAW_URL="https://raw.githubusercontent.com/kliuchev/iphone-duo-readiness/main"
 TARGET_DIR="${1:-.}"
 
 echo "📱 Installing iPhone Duo Readiness Skill into '${TARGET_DIR}'..."

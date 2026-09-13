@@ -1,11 +1,11 @@
 {
-  "name": "iphone-duo-skill",
+  "name": "iphone-duo-readiness",
   "version": "1.0.0",
   "description": "Universal AI Agent Skill for iPhone Duo (dual-screen / foldable) iOS project readiness analysis and refactoring",
   "main": "bin/cli.js",
   "bin": {
     "iphone-duo-skill": "bin/cli.js",
-    "duolipa": "bin/cli.js"
+    "iphone-duo-readiness": "bin/cli.js"
   },
   "keywords": [
     "ios",
@@ -24,10 +24,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kliuchev/duolipa.git"
+    "url": "git+https://github.com/kliuchev/iphone-duo-readiness.git"
   },
   "bugs": {
-    "url": "https://github.com/kliuchev/duolipa/issues"
+    "url": "https://github.com/kliuchev/iphone-duo-readiness/issues"
   },
-  "homepage": "https://github.com/kliuchev/duolipa#readme"
+  "homepage": "https://github.com/kliuchev/iphone-duo-readiness#readme"
 }

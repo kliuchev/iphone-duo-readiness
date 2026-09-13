@@ -15,15 +15,24 @@ Compatible with **all AI Coding Agents**:
 
 ## 🚀 Quick Start & Installation in Any iOS Repository
 
-To install this skill in any existing iOS project, simply copy the `.agents/skills/iphone-duo-readiness` folder into your project root:
+### Option A: One-Liner Install (Recommended)
+Run this single command inside the root folder of any iOS project:
 
 ```bash
-# Clone or copy into target iOS workspace
+curl -sSL https://raw.githubusercontent.com/kliuchev/iphone-duo-readiness/main/install.sh | bash
+```
+
+### Option B: NPX Installer
+```bash
+npx iphone-duo-readiness
+```
+
+### Option C: Manual Copy
+```bash
 cp -R .agents/skills/iphone-duo-readiness /path/to/your/ios-project/.agents/skills/
 ```
 
-Or install globally for machine-wide AI agent discovery:
-
+### Global Machine-Wide Installation (Antigravity / AGY)
 ```bash
 mkdir -p ~/.gemini/config/skills
 cp -R .agents/skills/iphone-duo-readiness ~/.gemini/config/skills/
@@ -73,6 +82,10 @@ The agent will automatically load `.agents/skills/iphone-duo-readiness/SKILL.md`
 ├── AGENTS.md                                   # Universal agent skill registry
 ├── GEMINI.md                                   # Antigravity agent configuration
 ├── README.md                                   # Documentation and usage guide
+├── install.sh                                  # 1-liner curl installer
+├── package.json                                # NPM package manifest
+├── bin/
+│   └── cli.js                                  # NPX installer script
 ├── .cursor/
 │   └── rules/
 │       └── iphone-duo-readiness.mdc            # Cursor IDE native rule
