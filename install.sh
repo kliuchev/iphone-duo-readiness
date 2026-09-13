@@ -27,7 +27,7 @@ if [ "${IS_LOCAL}" -eq 1 ]; then
 else
     echo "Downloading latest skill release from GitHub..."
     TMP_DIR=$(mktemp -d)
-    git clone --depth 1 "${REPO_URL}" "${TMP_DIR}" >/dev/null 2>&1
+    git clone --depth 1 "${REPO_URL}" "${TMP_DIR}" </dev/null >/dev/null 2>&1
     cp -R "${TMP_DIR}/.agents/skills/iphone-duo-readiness/"* "${TARGET_DIR}/.agents/skills/iphone-duo-readiness/"
     cp "${TMP_DIR}/AGENTS.md" "${TMP_DIR}/GEMINI.md" "${TARGET_DIR}/" 2>/dev/null || true
     cp "${TMP_DIR}/.cursor/rules/iphone-duo-readiness.mdc" "${TARGET_DIR}/.cursor/rules/" 2>/dev/null || true
