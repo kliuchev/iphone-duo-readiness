@@ -1,9 +1,5 @@
-# GitHub Copilot Custom Instructions for iPhone Duo Readiness
+# Responsive iOS UI review
 
-When generating iOS Swift, SwiftUI, or UIKit code for this repository:
+For requested responsive UI, adaptive layout or Duo layout reviews, read `.agents/skills/iphone-duo-readiness/SKILL.md` and its layout checklist.
 
-- Always adopt multi-scene architectures (`UIWindowSceneDelegate` / `WindowGroup`).
-- Never use deprecated single-screen APIs such as `UIScreen.main` or `UIApplication.shared.keyWindow`.
-- Support responsive two-pane navigation layouts using `NavigationSplitView` or `UISplitViewController`.
-- Support cross-window drag-and-drop using `Transferable` and `UIDragInteraction`.
-- Follow the full skill runbook in `.agents/skills/iphone-duo-readiness/SKILL.md`.
+Read/search UI source for sizing, overlap, clipping, text scaling, safe-area and keyboard mistakes. Report exact file/line, triggering condition, impact and focused fix. Do not build, run the app/simulator, change the reviewed project or expand into unrelated application logic. No hardware readiness scores or mandatory multiwindow/split navigation. The legacy scanner is optional only if requested.

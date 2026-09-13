@@ -1,182 +1,27 @@
 ---
 name: iphone-duo-readiness
-description: >-
-  Analyzes an iOS project (UIKit or SwiftUI) to evaluate its readiness for iPhone Duo
-  (dual-screen / foldable hardware), identifies compatibility issues, calculates a 5-pillar
-  readiness score, and generates step-by-step Swift refactoring code.
+description: Review iOS SwiftUI and UIKit source code for common nonresponsive UI mistakes. Find layout, sizing, text scaling, safe-area and keyboard issues and report exact locations with focused fixes. Use for responsive UI, adaptive layout, or iPhone Duo layout reviews.
 ---
 
-# 📱 iPhone Duo iOS Project Readiness Skill
+# Static review of responsive iOS interfaces
 
-Use this skill when asked to audit an iOS codebase for **iPhone Duo** (dual-screen / foldable hardware), assess multi-window/multi-screen compatibility, identify layout blockers, or migrate legacy single-screen UIKit/SwiftUI code to dynamic dual-display posture architectures.
+Read the project's UI code and flag typical mistakes that prevent it adapting to different container sizes, text sizes, or safe areas. The result is a short code review with actionable file/line findings.
 
----
+## Scope
 
-## 🎯 Overview of iPhone Duo Hardware & OS Model
+This is a static source review. Read files and search code; do not build, run tests, launch the app/simulator, install tools, or inspect simulator devices as part of a review. Do not change the reviewed project unless the user asks for fixes. Runtime validation is a separate task only when explicitly requested.
 
-iPhone Duo introduces a dual-display form factor with a central hinge seam and dynamic posture states:
-- **Dual-Portrait Mode**: Side-by-side screens in portrait orientation.
-- **Dual-Landscape / Book Mode**: Side-by-side screens in landscape orientation.
-- **Tabletop / Fold Mode**: Upper screen displays primary content; lower screen acts as control/keyboard/canvas.
-- **Span vs Split**: App can run in a single window on screen A, span across screen A + B over the seam, or run two simultaneous instances in separate scene sessions.
+Keep the review about layout and layout-related reachability of content/controls. Do not expand into audio, purchases, networking, general business logic, hardware research, scene lifecycle, or certification. The name does not require Duo-specific APIs, hinge detection, two-column navigation, multiple windows, or drag-and-drop. No readiness scores or pillar dashboards.
 
----
+## Review
 
-## 📋 Audit Workflow for AI Agents
+1. Locate the requested project and its UI sources. Read local instructions and source configuration only as needed to identify the active app and supported platforms. Prefer `rg --files` and targeted `rg` searches; skip dependencies, generated code, tests and examples.
+2. Read [the layout checklist](references/duo_audit_checklist.md). Trace suspicious measurements and modifiers through parent containers and reusable views. Review main screens, onboarding, sheets, dialogs and settings as applicable; do not rely on a short regex whitelist of phone widths.
+3. For each issue, identify what changes (width, available height, keyboard, text size, safe area, content length), the code's incorrect assumption, and the resulting clipping, overlap, unreadability or unreachable action. Derive this from source; runtime proof is not a prerequisite for a useful static finding. If the consequence depends on an unverified condition, say so in that finding rather than launching the app to resolve it.
+4. Return the most useful findings first. Each should contain **file:line → problem → triggering condition / impact → focused fix**. Use inline code comments when available, without duplicating the whole report. Group repetitions of the same cause. Finish with one brief scope note: static review, app not run. If there are no concrete findings, say so.
 
-Follow these 5 sequential phases when invoked to audit a repository or single file:
+Fixed constants are not automatically bugs: icon sizes, minimum tap targets, decorative shapes, readable max-width limits and intentional portrait-only design may be appropriate. `GeometryReader`, `ScrollView` and Auto Layout are not automatic passes either. Check whether they actually constrain and adapt the relevant content. Avoid claiming a layout breaks on a particular device based only on an imagined screen size.
 
-### Phase 1: Automated Static Code Analysis
-Run the built-in scanner script from the workspace root:
+For remediation examples consult [layout guidance](references/duo_architecture_patterns.md) when useful. Small local fixes are preferable to redesigning navigation. State the minimal change; do not rewrite the app during a review.
 
-```bash
-python3 .agents/skills/iphone-duo-readiness/scripts/analyze_ios_duo.py .
-```
-
-If python is unavailable or if auditing a single file/snippet manually, perform a pattern search for these anti-patterns:
-- `UIScreen.main` or `UIScreen.main.bounds`
-- `UIApplication.shared.keyWindow`
-- Hardcoded frame widths/heights (`375`, `390`, `414`, `430`)
-- `UIApplicationSupportsMultipleScenes = false` in `Info.plist`
-- Hardcoded orientation locks (`portraitOnly`, `shouldAutorotate = false`)
-
----
-
-### Phase 2: 5-Pillar Architectural Deep-Dive
-
-Evaluate the codebase across the 5 core pillars of iPhone Duo compatibility:
-
-#### 1. Multi-Window & Scene Architecture (Weight: 25%)
-- [ ] `Info.plist` contains `UIApplicationSupportsMultipleScenes = true`.
-- [ ] App uses `UIWindowSceneDelegate` / `SceneDelegate` or SwiftUI `WindowGroup`.
-- [ ] App can request new scenes dynamically via `UIApplication.shared.requestSceneSessionActivation`.
-- [ ] State restoration (`NSUserActivity`) is implemented for scene session lifecycle.
-
-#### 2. Adaptive Layout & Size Classes (Weight: 25%)
-- [ ] SwiftUI uses `NavigationSplitView`, `ViewThatFits`, or relative layout containers.
-- [ ] UIKit uses `UISplitViewController` or Auto Layout constraints (`leadingAnchor`, `trailingAnchor`).
-- [ ] Views adapt cleanly between Compact and Regular `horizontalSizeClass` and `verticalSizeClass`.
-- [ ] No hardcoded view dimensions derived from static single-screen iPhone viewports.
-
-#### 3. Modern Screen & Bounds APIs (Weight: 20%)
-- [ ] Zero usage of deprecated `UIScreen.main` (replaced by scene-aware screen/window bounds or `GeometryReader`).
-- [ ] Key window access is derived from active `UIWindowScene`.
-
-#### 4. Dual-Screen & Seam/Hinge Adaptivity (Weight: 15%)
-- [ ] UI controls and primary text avoid the central display seam / hinge occlusion zone.
-- [ ] Safe area insets (`safeAreaInsets` / `safeAreaPadding`) are respected.
-- [ ] Layout responds to posture changes (Book, Tabletop, Extended canvas).
-
-#### 5. Multitasking & Drag-and-Drop (Weight: 15%)
-- [ ] Supports drag-and-drop between left and right screens (`UIDragInteraction`, `UIDropInteraction`, `.onDrag`, `.onDrop`).
-- [ ] Cross-window item activation and side-by-side interaction supported.
-
----
-
-### Phase 3: Calculate the iPhone Duo Readiness Index
-
-Calculate the readiness score using the formula in [duo_scoring_rubric.md](./references/duo_scoring_rubric.md):
-
-$$\text{Readiness Index} = \sum_{p \in \text{Pillars}} \text{Score}_p \times \text{Weight}_p$$
-
-Score Categories:
-- **85 - 100%**: 🟢 **DUO-READY** (Minor optimizations only).
-- **60 - 84%**: 🟡 **PARTIALLY READY** (Requires scene & layout refactoring).
-- **0 - 59%**: 🔴 **NOT READY** (Contains critical multi-window / screen API blockers).
-
----
-
-### Phase 4: Generate Diagnostic Audit Report
-
-Format the diagnostic report for the user using this standard markdown structure:
-
-```markdown
-# 📱 iPhone Duo Readiness Report
-
-**Overall Readiness Score:** [Score]% [Badge]
-
-## 📊 Pillar Breakdown
-| Pillar | Weight | Score | Status |
-| :--- | :--- | :--- | :--- |
-| Multi-Window & Scene Architecture | 25% | X% | [Pass/Warn/Fail] |
-| Adaptive Layout & Size Classes | 25% | X% | [Pass/Warn/Fail] |
-| Modern Screen APIs | 20% | X% | [Pass/Warn/Fail] |
-| Dual-Screen & Seam/Hinge Adaptivity | 15% | X% | [Pass/Warn/Fail] |
-| Multitasking & Drag-and-Drop | 15% | X% | [Pass/Warn/Fail] |
-
-## 🚨 Critical Blockers & Anti-Patterns
-- [File:Line] issue description and remediation.
-
-## 🛠 Actionable Code Refactoring Plan
-Step-by-step instructions with code diffs.
-```
-
----
-
-### Phase 5: Produce Code Refactoring Solutions
-
-Refer to reference guides and examples for concrete Swift refactoring recipes:
-- Architectural patterns: [duo_architecture_patterns.md](./references/duo_architecture_patterns.md)
-- Detailed checklist: [duo_audit_checklist.md](./references/duo_audit_checklist.md)
-- SwiftUI before/after: [swiftui_duo_migration.swift](./examples/swiftui_duo_migration.swift)
-- UIKit before/after: [uikit_duo_migration.swift](./examples/uikit_duo_migration.swift)
-
----
-
-## 💡 Quick Code Refactoring Cheat Sheet
-
-### 1. Replacing `UIScreen.main`
-❌ **Bad (Legacy UIKit)**:
-```swift
-let screenWidth = UIScreen.main.bounds.width
-```
-✅ **Good (Duo-Ready UIKit)**:
-```swift
-guard let windowScene = view.window?.windowScene else { return }
-let sceneWidth = windowScene.screen.bounds.width
-```
-
-### 2. Replacing Single Stack View with Two-Pane Navigation (SwiftUI)
-❌ **Bad (Single Screen Only)**:
-```swift
-NavigationStack {
-    List(items) { item in
-        NavigationLink(item.title, destination: DetailView(item: item))
-    }
-}
-```
-✅ **Good (Duo-Ready Two-Pane Split)**:
-```swift
-NavigationSplitView {
-    List(items, selection: $selectedItem) { item in
-        Text(item.title)
-    }
-} detail: {
-    if let item = selectedItem {
-        DetailView(item: item)
-    } else {
-        ContentUnavailableView("Select an Item", systemImage: "sidebar.left")
-    }
-}
-.navigationSplitViewStyle(.balanced)
-```
-
-### 3. Avoiding Hinge Seam Occlusion (SwiftUI)
-```swift
-struct HingeAwareContainer<Content: View>: View {
-    let content: Content
-    
-    var body: some View {
-        GeometryReader { proxy in
-            let isDualScreen = proxy.size.width > 700
-            if isDualScreen {
-                HStack(spacing: 24) { // 24pt seam buffer zone
-                    content
-                }
-            } else {
-                content
-            }
-        }
-    }
-}
-```
+The legacy Python scanner is optional, only if specifically requested. It finds a few lexical candidates and misses most layout problems. Its JSON flags and null score fields are not the skill's report format.

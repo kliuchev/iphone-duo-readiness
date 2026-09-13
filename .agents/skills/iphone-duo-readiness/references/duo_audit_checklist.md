@@ -1,56 +1,20 @@
-# 📱 iPhone Duo 25-Point Comprehensive Technical Audit Checklist
+# Common nonresponsive UI mistakes
 
-Use this checklist when conducting an exhaustive code review of an iOS project (SwiftUI or UIKit) for iPhone Duo dual-screen hardware readiness.
+Use these as search leads, then read the containing view and its callers. Report actual source assumptions with their consequences, not every keyword match.
 
----
+| Look for | Verify in context | Typical correction |
+| --- | --- | --- |
+| `UIScreen.main.bounds`, `windowScene.screen.bounds`, cached screen widths | Is a screen dimension being used to size a view that can occupy less space? Is geometry captured only at initialization? | Use current container geometry, view bounds during layout, or relative constraints. |
+| Exact `.frame(width:height:)`, `CGRect`, constant width/height constraints | Is this a whole content panel assumed to fit a phone, a fixed column sum, or text with a fixed height? Does the parent allow shrinking or growing? | Flexible/max widths, minimum rather than exact text heights, container-relative layout. Keep intentional control/decorative dimensions. |
+| `.offset`, `.position`, independently aligned `ZStack` overlays, screen-height fractions | Can headers, primary controls and bottom actions collide when height shrinks or text grows? Offsets change drawing without reserving layout space. | Put related regions in a shared layout that reserves space; add a compact arrangement or scrolling. |
+| Non-scrolling `VStack`, fixed-height sheets/detents, stacked CTAs | Is the content's minimum height larger than the available region? Can all options and the primary action still be reached? | Scroll content, reserve a reachable action area, allow a suitable sheet height. A lone fixed detent is only a lead, not proof. |
+| `.font(.system(size:))`, fixed custom fonts, `.dynamicTypeSize` caps, fixed text row heights | Does important UI text ignore the user's text-size setting? Would scaling then clip because the row cannot grow? | Semantic text styles or `@ScaledMetric`/relative custom fonts, multiline text and flexible row heights. |
+| `.lineLimit(1)`, `.fixedSize`, `.clipped`, `.minimumScaleFactor`, horizontal labels/chips/columns | Do long translations, values or accessibility text truncate essential information or push actions away? Does a fixed row budget fit the actual content? | Wrap, use an adaptive stack/grid, scroll when appropriate; avoid hiding an essential label through truncation/shrinking. |
+| `.ignoresSafeArea`, hardcoded top/bottom insets, manually added `safeAreaInsets` | Is only the background ignoring safe areas, or interactive content too? Is an inset counted twice inside an already-safe container? | Let the container handle safe areas; use `safeAreaInset` for reserved controls and avoid duplicate padding. |
+| Keyboard avoidance overrides, focusable fields with fixed bottom content, keyboard frame math | Does the keyboard cover the focused field/action? Are screen keyboard coordinates converted into the current view's coordinate space? | Scroll focused content, respect keyboard safe area, convert geometry in the correct window. |
+| UIKit constraints, autoresizing masks, frames set only in `viewDidLoad` | Can content compress/stretch correctly? Are required constant sizes conflicting with container edges? Does frame layout update when bounds change? | Complete relative constraints, appropriate hugging/compression priorities, update manual frames during layout. |
+| Size-class/device-name branches, orientation checks, width-only breakpoints | Does the chosen layout actually fit the current container, including height? Are tablets assumed to always be full width? | Content-driven breakpoints, adaptive grid/stack or `ViewThatFits`; measure the current container. |
 
-## Pillar 1: Multi-Window & Scene Architecture (25 Points)
+Useful searches (adapt to the project): `UIScreen|\.bounds|\.frame\(|CGRect|equalToConstant`, `\.offset|\.position|\.overlay|ZStack`, `font\(|lineLimit|fixedSize|clipped|dynamicTypeSize`, `safeArea|ignoresSafeArea|keyboard|presentationDetents`, `ScrollView|GeometryReader|ViewThatFits|horizontalSizeClass`.
 
-- [ ] **1.1 Scene Manifest in Info.plist**: `UIApplicationSupportsMultipleScenes` is set to `true` under `UIApplicationSceneManifest`.
-- [ ] **1.2 UIWindowSceneDelegate Adoption**: App uses `UIWindowSceneDelegate` / `SceneDelegate` for window lifecycle rather than single `UIApplicationDelegate.window`.
-- [ ] **1.3 SwiftUI WindowGroup Multi-Windowing**: SwiftUI entrypoint uses `WindowGroup` with support for multiple scene instances.
-- [ ] **1.4 Dynamic Scene Requesting**: App implements `UIApplication.shared.requestSceneSessionActivation` for launching secondary windows on demand (e.g., opening a document/detail in the second screen).
-- [ ] **1.5 State Restoration & Persistence**: Implement `stateRestorationActivity(for sceneSession:)` and `NSUserActivity` so scenes preserve scroll offset, active tab, and draft data upon detachment/reattachment.
-
----
-
-## Pillar 2: Adaptive Layout & Size Classes (25 Points)
-
-- [ ] **2.1 Size Class Responsiveness**: Layouts adapt seamlessly between Compact (`.compact`) and Regular (`.regular`) horizontal and vertical size classes.
-- [ ] **2.2 Master-Detail / Two-Pane Containers**: Uses `NavigationSplitView` (SwiftUI) or `UISplitViewController` (UIKit) instead of forced single `NavigationStack` / `UINavigationController`.
-- [ ] **2.3 ViewThatFits & Relative Containers**: Uses `ViewThatFits`, `LayoutBuilder`, or `GeometryReader` instead of hardcoded pixel metrics.
-- [ ] **2.4 Auto Layout Relative Anchors**: UIKit code uses `leadingAnchor`, `trailingAnchor`, and multiplier constraints instead of fixed frame widths.
-- [ ] **2.5 Orientation Flexibility**: App allows all interface orientations (`UIInterfaceOrientationMaskAll`) and does not hardcode `shouldAutorotate = false` or `portraitOnly`.
-
----
-
-## Pillar 3: Modern Screen & Bounds APIs (20 Points)
-
-- [ ] **3.1 No `UIScreen.main` References**: Zero usage of `UIScreen.main` in codebase. All screen queries route through `windowScene.screen` or container bounds.
-- [ ] **3.2 No `UIScreen.main.bounds`**: Screen size measurements are bound to the containing `UIWindowScene` or `GeometryProxy`, enabling correct bounds during dual-screen split.
-- [ ] **3.3 Safe Key Window Access**: Eliminates `UIApplication.shared.keyWindow` in favor of scene window discovery (`view.window` or `connectedScenes`).
-- [ ] **3.4 Dynamic Scale Factor**: Uses `traitCollection.displayScale` or scene scale factor instead of assuming single fixed scale factor.
-- [ ] **3.5 Modern Screen Recording / Capture APIs**: Uses scene-based capture observation instead of global screen notifications.
-
----
-
-## Pillar 4: Dual-Screen & Seam/Hinge Adaptivity (15 Points)
-
-- [ ] **4.1 Seam/Hinge Occlusion Clearance**: Important interactive controls, CTA buttons, and readable body text maintain a safe buffer zone (16–32pt) around the central display fold line.
-- [ ] **4.2 Safe Area Insets Integration**: Layout respects `safeAreaInsets` / `.safeAreaPadding()` across display boundaries.
-- [ ] **4.3 Posture State Machine**: Code handles device posture transitions:
-  - **Book Posture**: Side-by-side reading or two-pane editing.
-  - **Tabletop Posture**: Top display for content video/canvas; bottom display for controls/keyboard.
-  - **Single Display Posture**: Folded back into standard single screen mode.
-- [ ] **4.4 Dynamic Aspect Ratio Transitions**: Smooth layout recalculation without visual jumps during posture changes (`viewWillTransition(to:with:)` or `.onChange(of: geometry)`).
-- [ ] **4.5 Two-Page Reading Support**: Canvas or reader apps support page-turning across dual displays with aligned margins.
-
----
-
-## Pillar 5: Multitasking & Drag-and-Drop Integration (15 Points)
-
-- [ ] **5.1 Cross-Scene Drag-and-Drop**: Supports dragging items (text, images, links, documents) from Screen A scene into Screen B scene using `UIDragInteraction` / `UIDropInteraction` or `.onDrag` / `.onDrop`.
-- [ ] **5.2 Transferable Protocol**: SwiftUI models conform to `Transferable` for smooth system-wide inter-app and inter-window drag operations.
-- [ ] **5.3 Side-by-Side Multitasking**: App gracefully shares screen space with secondary apps without crashing or corrupting UI layout.
-- [ ] **5.4 Keyboard Shortcut & Command Support**: Supports hardware keyboard shortcuts (`UIKeyCommand` / `.keyboardShortcut()`) when operating in dual-screen laptop/tabletop configuration.
-- [ ] **5.5 Background Scene Pause/Resume**: App handles inactive/background state per-scene independently without interrupting active scene sessions.
+Do not label hypothetical short/landscape windows as broken supported configurations. A useful conditional finding says, for example: "This layout has no fallback below its content's minimum height; these independently positioned regions will overlap if that height is available." Explain the layout calculation when it makes the finding concrete.

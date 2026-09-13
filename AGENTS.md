@@ -1,14 +1,8 @@
-# Universal AI Agent Customization Registry (AGENTS.md)
+# Project skills
 
-This project contains specialized AI agent skills located in `.agents/skills/`.
+## iphone-duo-readiness
 
-## Available Skills
-
-### `iphone-duo-readiness`
-- **Location**: [.agents/skills/iphone-duo-readiness/SKILL.md](file://.agents/skills/iphone-duo-readiness/SKILL.md)
-- **Description**: Analyzes an iOS codebase (UIKit or SwiftUI) to evaluate readiness for iPhone Duo (dual-screen / foldable hardware), detects compatibility issues, calculates a 5-pillar readiness index, and generates Swift refactoring solutions.
-- **Trigger**: When asked to check iPhone Duo compatibility, multi-window readiness, screen API deprecations, dynamic posture layouts, or dual-screen navigation.
-- **Scanner Command**:
-  ```bash
-  python3 .agents/skills/iphone-duo-readiness/scripts/analyze_ios_duo.py .
-  ```
+- Location: [.agents/skills/iphone-duo-readiness/SKILL.md](.agents/skills/iphone-duo-readiness/SKILL.md)
+- Purpose: static review of common nonresponsive SwiftUI/UIKit layout mistakes; report exact source locations, triggering conditions, impact and focused fixes.
+- Use for responsive UI, adaptive layout or Duo layout reviews.
+- Read and search source code. Do not build, launch apps/simulators, change the reviewed project or run the optional scanner unless requested. Follow the skill for the layout checklist and report format.

@@ -1,309 +1,207 @@
 #!/usr/bin/env python3
-"""
-iPhone Duo iOS Project Readiness Analyzer
-------------------------------------------
-Scans Swift/UIKit/SwiftUI codebases and Info.plist configurations to evaluate
-compatibility with dual-screen / foldable hardware (iPhone Duo).
-
-Output: Comprehensive readiness report with scores across 5 core pillars,
-issue locations, and recommended fixes.
-"""
-
-import os
-import re
-import json
-import sys
+"""Collect static review candidates; never infer hardware readiness from tokens."""
 import argparse
+import json
+import os
 from pathlib import Path
+import plistlib
+import re
+from xml.parsers.expat import ExpatError
 
-# Pillar Definitions & Weights
-PILLARS = {
-    "multi_scene": {
-        "title": "Multi-Window & Scene Architecture",
-        "weight": 25,
-        "description": "Supports multiple scenes, UIWindowSceneDelegate, and dynamic window activation."
-    },
-    "adaptive_layout": {
-        "title": "Adaptive Layout & Size Classes",
-        "weight": 25,
-        "description": "Uses flexible constraints/containers and avoids hardcoded screen bounds."
-    },
-    "screen_api": {
-        "title": "Modern Screen & Bounds API Usage",
-        "weight": 20,
-        "description": "Avoids deprecated APIs like UIScreen.main and legacy keyWindow access."
-    },
-    "duo_hinge": {
-        "title": "Dual-Screen & Hinge/Posture Adaptivity",
-        "weight": 15,
-        "description": "Handles display seams, safe area insets, and device postures (Book, Tabletop)."
-    },
-    "multitasking": {
-        "title": "Multitasking & Drag-and-Drop Integration",
-        "weight": 15,
-        "description": "Supports drag-and-drop between scenes and side-by-side data sharing."
-    }
-}
+STRING_START = re.compile(r'(\#*)("""|")')
 
-# Regex Patterns for Analysis
-PATTERNS = {
-    # Anti-patterns (Negative indicators)
-    "uiscreen_main": {
-        "regex": r'UIScreen\.main',
-        "severity": "CRITICAL",
-        "pillar": "screen_api",
-        "message": "UIScreen.main is deprecated in iOS 16+ and breaks in multi-window / dual-screen setups. Use view.window.windowScene.screen or geometry insets.",
-        "penalty": 5
-    },
-    "key_window": {
-        "regex": r'UIApplication\.shared\.keyWindow',
-        "severity": "HIGH",
-        "pillar": "screen_api",
-        "message": "UIApplication.shared.keyWindow is deprecated and unsafe on dual-screen setups. Derive window from UIWindowScene.",
-        "penalty": 4
-    },
-    "hardcoded_screen_width": {
-        "regex": r'UIScreen\.main\.bounds\.(width|height)',
-        "severity": "CRITICAL",
-        "pillar": "screen_api",
-        "message": "Hardcoded screen bounds lookup assumption. Dynamic dual-display windows change bounds continuously.",
-        "penalty": 5
-    },
-    "fixed_frame_dimensions": {
-        "regex": r'\.frame\s*\(\s*width:\s*(375|390|414|430|393|428|360)\s*,\s*height:',
-        "severity": "MEDIUM",
-        "pillar": "adaptive_layout",
-        "message": "Hardcoded view frame dimensions based on single-screen iPhone sizes. Use flexible frames or relative layout metrics.",
-        "penalty": 3
-    },
-    "orientation_lock": {
-        "regex": r'shouldAutorotate\s*=>\s*false|supportedInterfaceOrientations.*portraitOnly',
-        "severity": "HIGH",
-        "pillar": "adaptive_layout",
-        "message": "Hardcoded portrait orientation locking prevents iPhone Duo dual-landscape/portrait transitions.",
-        "penalty": 4
-    },
-    
-    # Positive Indicators
-    "scene_delegate": {
-        "regex": r'UIWindowSceneDelegate|SceneDelegate',
-        "pillar": "multi_scene",
-        "reward": 6
-    },
-    "request_scene": {
-        "regex": r'requestSceneSessionActivation',
-        "pillar": "multi_scene",
-        "reward": 5
-    },
-    "navigation_split_view": {
-        "regex": r'NavigationSplitView|UISplitViewController',
-        "pillar": "adaptive_layout",
-        "reward": 7
-    },
-    "size_class_env": {
-        "regex": r'@Environment\(\s*\\\.horizontalSizeClass\s*\)|traitCollectionDidChange',
-        "pillar": "adaptive_layout",
-        "reward": 6
-    },
-    "view_that_fits": {
-        "regex": r'ViewThatFits|LayoutBuilder|GeometryReader',
-        "pillar": "adaptive_layout",
-        "reward": 4
-    },
-    "safe_area_insets": {
-        "regex": r'safeAreaInsets|safeAreaPadding|safeAreaInset',
-        "pillar": "duo_hinge",
-        "reward": 5
-    },
-    "drag_drop": {
-        "regex": r'UIDragInteraction|UIDropInteraction|\.onDrag|\.onDrop|dropDestination',
-        "pillar": "multitasking",
-        "reward": 6
-    }
-}
+PILLARS = ('multi_scene', 'adaptive_layout', 'screen_api', 'duo_hinge', 'multitasking')
+EXCLUDED = {'.git', '.agents', '.codex', 'DerivedData', 'Pods', '.build', 'build',
+            'Carthage', 'node_modules', 'vendor', 'Examples', 'examples', 'Tests', 'tests'}
+RULES = (
+    ('screen_lookup', 'screen_api', r'\bUIScreen\s*\.\s*main\b|\[\s*UIScreen\s+mainScreen\s*\]',
+     'Review screen lookup: layout needs container bounds; screen properties need the originating scene.'),
+    ('global_key_window', 'screen_api', r'\bUIApplication\s*\.\s*shared\s*\.\s*keyWindow\b|\[\s*\[\s*UIApplication\s+sharedApplication\s*\]\s+keyWindow\s*\]',
+     'Review global key-window access; prefer the originating view/window.'),
+    ('fixed_frame', 'adaptive_layout', r'\.frame\s*\([^)]*?\b(?:width|height)\s*:\s*(?:360|375|390|393|414|428|430)(?:\.0)?\b',
+     'Review a viewport-sized constant; fixed dimensions can be intentional for individual controls.'),
+    ('rotation_disabled', 'adaptive_layout', r'\bshouldAutorotate\s*:\s*Bool\s*\{\s*(?:return\s+)?false\b|\bshouldAutorotate\s*\{\s*return\s+NO\b',
+     'Review disabled rotation against supported product/device workflows.'),
+    ('portrait_mask', 'adaptive_layout', r'\bsupportedInterfaceOrientations\s*:\s*UIInterfaceOrientationMask\s*\{\s*(?:return\s+)?\.portrait\b',
+     'Review portrait-only orientation policy in the app target.'),
+)
+SIGNALS = (
+    ('multi_scene', r'\b(?:WindowGroup|UIWindowSceneDelegate|requestSceneSessionActivation)\b'),
+    ('adaptive_layout', r'\b(?:NavigationSplitView|UISplitViewController|GeometryReader|ViewThatFits|horizontalSizeClass|leadingAnchor)\b'),
+    ('duo_hinge', r'\b(?:safeAreaInsets|safeAreaPadding|safeAreaInset|safeAreaLayoutGuide)\b'),
+    ('multitasking', r'\b(?:UIDragInteraction|UIDropInteraction|Transferable)\b|\.(?:onDrag|onDrop|draggable|dropDestination)\b'),
+)
+
+
+def code_only(source):
+    """Mask comments/literals, preserving offsets and lines (not a Swift parser).
+
+    Handles nested block comments and Swift raw/multiline strings. Interpolated
+    expressions and regex literals are not parsed; inspect these manually.
+    """
+    result = list(source)
+    i = 0
+    while i < len(source):
+        start = i
+        if source.startswith('//', i):
+            end = source.find('\n', i)
+            i = len(source) if end < 0 else end
+        elif source.startswith('/*', i):
+            depth = 1
+            i += 2
+            while i < len(source) and depth:
+                if source.startswith('/*', i):
+                    depth += 1
+                    i += 2
+                elif source.startswith('*/', i):
+                    depth -= 1
+                    i += 2
+                else:
+                    i += 1
+        else:
+            match = STRING_START.match(source, i)
+            if match:
+                hashes, quote = match.groups()
+                closing = quote + hashes
+                i += len(match.group())
+                while i < len(source):
+                    if source.startswith('\\' + hashes, i):
+                        i += 2 + len(hashes)
+                    elif source.startswith(closing, i):
+                        i += len(closing)
+                        break
+                    else:
+                        i += 1
+            elif source[i] == "'":
+                i += 1
+                while i < len(source):
+                    if source[i] == '\\':
+                        i += 2
+                    elif source[i] == "'":
+                        i += 1
+                        break
+                    else:
+                        i += 1
+            else:
+                i += 1
+                continue
+        for j in range(start, min(i, len(source))):
+            if source[j] != '\n':
+                result[j] = ' '
+    return ''.join(result)
+
 
 class DuoAnalyzer:
-    def __init__(self, root_dir):
+    def __init__(self, root_dir, exclude=()):
         self.root_dir = Path(root_dir)
+        self.exclude = EXCLUDED | set(exclude)
         self.issues = []
-        self.positive_findings = []
+        self.positive_findings = []  # Backward-compatible name: signals, not passes.
+        self.configurations = []
+        self.errors = []
         self.files_scanned = 0
-        self.plist_found = False
-        self.multi_scene_enabled = False
-        self.supported_orientations_valid = False
-        self.pillar_scores = {key: 100 for key in PILLARS.keys()}
+        self.pillar_scores = dict.fromkeys(PILLARS)
+        self.overall_readiness = None
+
+    def relative(self, path):
+        return str(path.relative_to(self.root_dir)) if self.root_dir.is_dir() else path.name
 
     def scan(self):
-        for root, dirs, files in os.walk(self.root_dir):
-            # Skip build/derived data/pods directories
-            dirs[:] = [d for d in dirs if d not in ['.git', 'DerivedData', 'Pods', '.build', 'Carthage', 'fastlane']]
-            
-            for file in files:
-                file_path = Path(root) / file
-                if file_path.suffix in ['.swift', '.m', '.h']:
-                    self.scan_source_file(file_path)
-                elif file.endswith('Info.plist'):
-                    self.scan_plist_file(file_path)
-
-        self.calculate_final_scores()
-
-    def scan_source_file(self, path):
-        self.files_scanned += 1
-        try:
-            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                lines = f.readlines()
-        except Exception:
-            return
-
-        rel_path = path.relative_to(self.root_dir)
-
-        for idx, line in enumerate(lines, 1):
-            for pattern_id, rule in PATTERNS.items():
-                if re.search(rule["regex"], line):
-                    if "penalty" in rule:
-                        self.issues.append({
-                            "file": str(rel_path),
-                            "line": idx,
-                            "code": line.strip(),
-                            "severity": rule["severity"],
-                            "pillar": rule["pillar"],
-                            "message": rule["message"],
-                            "penalty": rule["penalty"]
-                        })
-                        self.pillar_scores[rule["pillar"]] -= rule["penalty"]
-                    elif "reward" in rule:
-                        self.positive_findings.append({
-                            "file": str(rel_path),
-                            "line": idx,
-                            "pillar": rule["pillar"],
-                            "code": line.strip()
-                        })
-
-    def scan_plist_file(self, path):
-        self.plist_found = True
-        try:
-            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                content = f.read()
-
-            if "UIApplicationSupportsMultipleScenes" in content:
-                if "<true/>" in content.split("UIApplicationSupportsMultipleScenes")[1][:50]:
-                    self.multi_scene_enabled = True
-                    self.positive_findings.append({
-                        "file": str(path.relative_to(self.root_dir)),
-                        "line": 0,
-                        "pillar": "multi_scene",
-                        "code": "UIApplicationSupportsMultipleScenes = true"
-                    })
-                else:
-                    self.issues.append({
-                        "file": str(path.relative_to(self.root_dir)),
-                        "line": 0,
-                        "code": "UIApplicationSupportsMultipleScenes = false",
-                        "severity": "CRITICAL",
-                        "pillar": "multi_scene",
-                        "message": "UIApplicationSupportsMultipleScenes is disabled in Info.plist. iPhone Duo requires multi-scene support.",
-                        "penalty": 20
-                    })
-                    self.pillar_scores["multi_scene"] -= 20
-            else:
-                self.issues.append({
-                    "file": str(path.relative_to(self.root_dir)),
-                    "line": 0,
-                    "code": "Missing UIApplicationSupportsMultipleScenes",
-                    "severity": "HIGH",
-                    "pillar": "multi_scene",
-                    "message": "Info.plist does not define UIApplicationSupportsMultipleScenes manifest.",
-                    "penalty": 15
-                })
-                self.pillar_scores["multi_scene"] -= 15
-        except Exception:
-            pass
-
-    def calculate_final_scores(self):
-        # Clamp pillar scores between 0 and 100
-        for pillar in self.pillar_scores:
-            self.pillar_scores[pillar] = max(0, min(100, self.pillar_scores[pillar]))
-
-        # Calculate weighted overall index
-        total_score = 0
-        total_weight = 0
-        for key, info in PILLARS.items():
-            total_score += self.pillar_scores[key] * (info["weight"] / 100.0)
-            total_weight += info["weight"]
-
-        self.overall_readiness = round(total_score, 1)
-
-    def generate_markdown_report(self):
-        lines = []
-        lines.append("# 📱 iPhone Duo Readiness Audit Report")
-        lines.append(f"**Target Directory:** `{self.root_dir.resolve()}`")
-        lines.append(f"**Files Scanned:** {self.files_scanned}")
-        lines.append(f"**Overall Readiness Score:** `{self.overall_readiness}%`\n")
-
-        # Rating badge logic
-        if self.overall_readiness >= 85:
-            badge = "🟢 **DUO-READY**: The project handles dynamic scenes, adaptive layouts, and modern APIs well."
-        elif self.overall_readiness >= 60:
-            badge = "🟡 **PARTIALLY READY**: Needs multi-scene and layout adaptations for dual screen."
+        if not self.root_dir.exists():
+            self.errors.append({'file': str(self.root_dir), 'message': 'Input does not exist'})
+        elif self.root_dir.is_file():
+            self.scan_file(self.root_dir)
         else:
-            badge = "🔴 **NOT READY**: Contains critical blockers (legacy UIScreen APIs, single window locks)."
-        lines.append(f"> {badge}\n")
+            def walk_error(error):
+                self.errors.append({'file': str(error.filename), 'message': str(error)})
+            for root, dirs, files in os.walk(self.root_dir, onerror=walk_error):
+                dirs[:] = sorted(d for d in dirs if d not in self.exclude and not Path(root, d).is_symlink())
+                for name in sorted(files):
+                    path = Path(root, name)
+                    if not path.is_symlink():
+                        self.scan_file(path)
+        self.assessment_status = ('incomplete' if self.errors else
+                                  'needs_review' if self.files_scanned else 'insufficient_evidence')
 
-        lines.append("## 📊 Pillar Breakdown\n")
-        lines.append("| Pillar | Weight | Score | Status |")
-        lines.append("| :--- | :--- | :--- | :--- |")
+    def scan_file(self, path):
+        try:
+            if path.suffix in {'.swift', '.m', '.mm', '.h'}:
+                source = path.read_text(encoding='utf-8')
+                self.files_scanned += 1
+                clean = code_only(source)
+                for rule_id, pillar, pattern, message in RULES:
+                    for match in re.finditer(pattern, clean):
+                        self.issues.append({'rule_id': rule_id, 'file': self.relative(path),
+                                            'line': clean.count('\n', 0, match.start()) + 1,
+                                            'pillar': pillar, 'severity': 'REVIEW',
+                                            'confidence': 'heuristic', 'message': message})
+                for pillar, pattern in SIGNALS:
+                    for match in re.finditer(pattern, clean):
+                        self.positive_findings.append({'file': self.relative(path),
+                            'line': clean.count('\n', 0, match.start()) + 1,
+                            'pillar': pillar, 'code': match.group(), 'status': 'unverified_signal'})
+            elif path.suffix == '.plist':
+                with path.open('rb') as stream:
+                    config = plistlib.load(stream)
+                if not isinstance(config, dict):
+                    raise ValueError('Plist root is not a dictionary')
+                manifest = config.get('UIApplicationSceneManifest', {})
+                if not isinstance(manifest, dict):
+                    raise ValueError('UIApplicationSceneManifest is not a dictionary')
+                enabled = manifest.get('UIApplicationSupportsMultipleScenes')
+                if enabled is not None and not isinstance(enabled, bool):
+                    raise ValueError('UIApplicationSupportsMultipleScenes is not a boolean')
+                self.configurations.append({'file': self.relative(path),
+                    'multiple_scenes': enabled,
+                    'orientations': {k: v for k, v in config.items() if k.startswith('UISupportedInterfaceOrientations')},
+                    'status': 'target_and_effective_build_settings_unverified'})
+        except (OSError, UnicodeError, ValueError, ExpatError, plistlib.InvalidFileException) as error:
+            self.errors.append({'file': self.relative(path), 'message': str(error)})
 
-        for key, info in PILLARS.items():
-            score = self.pillar_scores[key]
-            status = "✅ Pass" if score >= 80 else ("⚠️ Warning" if score >= 50 else "❌ Action Required")
-            lines.append(f"| **{info['title']}** | {info['weight']}% | `{score}%` | {status} |")
-
-        lines.append("\n## 🚨 Diagnostic Findings & Issues\n")
-        if not self.issues:
-            lines.append("🎉 No critical anti-patterns or blockers detected!")
-        else:
-            # Group by severity
-            severities = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
-            for sev in severities:
-                sev_issues = [i for i in self.issues if i["severity"] == sev]
-                if sev_issues:
-                    lines.append(f"### {sev} Severity ({len(sev_issues)})\n")
-                    for issue in sev_issues:
-                        lines.append(f"- **[{issue['pillar'].upper()}]** `{issue['file']}:{issue['line']}`")
-                        lines.append(f"  - **Issue:** {issue['message']}")
-                        lines.append(f"  - **Code:** `{issue['code']}`\n")
-
-        lines.append("\n## 🛠 Recommended Next Steps for iPhone Duo Adaptation")
-        lines.append("1. **Enable Multi-Scene Support**: Ensure `Info.plist` sets `UIApplicationSupportsMultipleScenes = true` and adopt `UIWindowSceneDelegate`.")
-        lines.append("2. **Eliminate `UIScreen.main`**: Replace deprecated single screen references with scene window context or `GeometryReader`.")
-        lines.append("3. **Adopt Two-Pane Layouts**: Refactor rigid stack views into `NavigationSplitView` (SwiftUI) or `UISplitViewController` (UIKit).")
-        lines.append("4. **Add Hinge & Seam Awareness**: Ensure UI controls do not intersect display fold lines.")
-        lines.append("5. **Enable Multi-Window Drag & Drop**: Allow data transfers between left and right screens.")
-
-        return "\n".join(lines)
+    def report(self):
+        return {'schema_version': 2, 'overall_readiness': None,
+                'assessment_status': self.assessment_status, 'files_scanned': self.files_scanned,
+                'pillar_scores': self.pillar_scores, 'issues': self.issues,
+                'positive_findings': self.positive_findings, 'configurations': self.configurations,
+                'errors': self.errors, 'limitations': [
+                    'Static candidates only; no readiness or certification verdict.',
+                    'No target membership, build settings, generated plist, or conditional-compilation evaluation.',
+                    'Limited Swift/Objective-C lexical patterns; interpolation expressions, regex literals and indirect calls need manual review.',
+                    'Scene correctness, navigation, accessibility, posture and drag/drop require manual/runtime checks.',
+                    'Excluded directory names: ' + ', '.join(sorted(self.exclude))]}
 
     def generate_json_report(self):
-        return json.dumps({
-            "overall_readiness": self.overall_readiness,
-            "files_scanned": self.files_scanned,
-            "pillar_scores": self.pillar_scores,
-            "issues": self.issues,
-            "positive_findings": self.positive_findings
-        }, indent=2)
+        return json.dumps(self.report(), indent=2)
+
+    def generate_markdown_report(self):
+        lines = ['# iOS / iPhone Duo static review',
+                 f'Status: **{self.assessment_status}**; source files read: {self.files_scanned}.',
+                 'Readiness score: unavailable. All five review areas require evidence.', '', '## Candidates']
+        for issue in self.issues:
+            lines.append(f"- `{issue['file']}:{issue['line']}` [{issue['rule_id']}]: {issue['message']}")
+        if not self.issues:
+            lines.append('No matching candidates; this does not establish compatibility.')
+        lines.extend(['', '## Configuration observations'])
+        for config in self.configurations:
+            lines.append(f"- `{config['file']}`: {json.dumps(config, sort_keys=True)}")
+        lines.extend(['', '## Read/parse errors'])
+        lines.extend(f"- `{error['file']}`: {error['message']}" for error in self.errors)
+        lines.extend(['', '## Limits'])
+        lines.extend('- ' + item for item in self.report()['limitations'])
+        return '\n'.join(lines)
+
 
 def main():
-    parser = argparse.ArgumentParser(description="Analyze iOS Project for iPhone Duo Readiness")
-    parser.add_argument("path", nargs="?", default=".", help="Path to iOS project root directory")
-    parser.add_argument("--json", action="store_true", help="Output raw JSON format")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('path', nargs='?', default='.')
+    parser.add_argument('--json', action='store_true')
+    parser.add_argument('--exclude', action='append', default=[], metavar='DIRECTORY_NAME')
     args = parser.parse_args()
-
-    analyzer = DuoAnalyzer(args.path)
+    analyzer = DuoAnalyzer(args.path, args.exclude)
     analyzer.scan()
+    print(analyzer.generate_json_report() if args.json else analyzer.generate_markdown_report())
+    return 2 if analyzer.errors else 0
 
-    if args.json:
-        print(analyzer.generate_json_report())
-    else:
-        print(analyzer.generate_markdown_report())
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    raise SystemExit(main())

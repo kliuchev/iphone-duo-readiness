@@ -1,6 +1,3 @@
-# Antigravity Agent Configuration (GEMINI.md)
+# Project skills
 
-## Active Skills
-
-- **iphone-duo-readiness**: [.agents/skills/iphone-duo-readiness/SKILL.md](file://.agents/skills/iphone-duo-readiness/SKILL.md)
-  Use this skill to perform static analysis, architecture checks, and code refactoring for iPhone Duo dual-screen iOS apps.
+Use [iphone-duo-readiness](.agents/skills/iphone-duo-readiness/SKILL.md) for static source review of responsive SwiftUI/UIKit interfaces. Report layout findings with file/line references and focused fixes. Do not build or launch the app for this review.

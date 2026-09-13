@@ -1,19 +1,10 @@
 ---
-description: iPhone Duo iOS Project Readiness & Refactoring Skill
+description: Static review of responsive iOS interfaces
 globs: ["**/*.swift", "**/*.m", "**/*.h", "**/Info.plist"]
 ---
 
-# iPhone Duo Readiness Rule for Cursor
+# Responsive iOS UI review
 
-When analyzing, reviewing, or generating iOS code (UIKit or SwiftUI), follow the iPhone Duo readiness guidelines defined in `.agents/skills/iphone-duo-readiness/SKILL.md`:
+For requested responsive UI, adaptive layout or Duo layout reviews, read `.agents/skills/iphone-duo-readiness/SKILL.md` and its layout checklist.
 
-1. **Avoid `UIScreen.main` & `bounds`**: Use scene window screen or `GeometryReader`.
-2. **Support Multi-Window**: Ensure `UIApplicationSupportsMultipleScenes` is enabled.
-3. **Use Two-Pane Containers**: Prefer `NavigationSplitView` (SwiftUI) or `UISplitViewController` (UIKit).
-4. **Avoid Fixed Frame Widths**: Use dynamic size classes and relative layout constraints.
-5. **Clear Hinge Seams**: Leave safe margins around central fold lines.
-
-To run full static code analysis:
-```bash
-python3 .agents/skills/iphone-duo-readiness/scripts/analyze_ios_duo.py .
-```
+Read/search UI source for sizing, overlap, clipping, text scaling, safe-area and keyboard mistakes. Report exact file/line, triggering condition, impact and focused fix. Do not build, run the app/simulator, change the reviewed project or expand into unrelated application logic. No hardware readiness scores or mandatory multiwindow/split navigation. The legacy scanner is optional only if requested.
