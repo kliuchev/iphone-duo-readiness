@@ -1,6 +1,6 @@
 {
   "name": "iphone-duo-readiness",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Universal AI Agent Skill for iPhone Duo (dual-screen / foldable) iOS project readiness analysis and refactoring",
   "main": "bin/cli.js",
   "bin": {
