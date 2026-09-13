@@ -1,0 +1,11 @@
+.DS_Store
+__pycache__/
+*.pyc
+build/
+dist/
+*.egg-info/
+node_modules/
+.build/
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/

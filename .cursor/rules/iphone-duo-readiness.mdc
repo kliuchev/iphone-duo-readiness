@@ -1,0 +1,19 @@
+---
+description: iPhone Duo iOS Project Readiness & Refactoring Skill
+globs: ["**/*.swift", "**/*.m", "**/*.h", "**/Info.plist"]
+---
+
+# iPhone Duo Readiness Rule for Cursor
+
+When analyzing, reviewing, or generating iOS code (UIKit or SwiftUI), follow the iPhone Duo readiness guidelines defined in `.agents/skills/iphone-duo-readiness/SKILL.md`:
+
+1. **Avoid `UIScreen.main` & `bounds`**: Use scene window screen or `GeometryReader`.
+2. **Support Multi-Window**: Ensure `UIApplicationSupportsMultipleScenes` is enabled.
+3. **Use Two-Pane Containers**: Prefer `NavigationSplitView` (SwiftUI) or `UISplitViewController` (UIKit).
+4. **Avoid Fixed Frame Widths**: Use dynamic size classes and relative layout constraints.
+5. **Clear Hinge Seams**: Leave safe margins around central fold lines.
+
+To run full static code analysis:
+```bash
+python3 .agents/skills/iphone-duo-readiness/scripts/analyze_ios_duo.py .
+```

@@ -1,0 +1,22 @@
+name: CI & Audit Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-scanner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run iPhone Duo Readiness Analyzer Test
+        run: |
+          python3 .agents/skills/iphone-duo-readiness/scripts/analyze_ios_duo.py .
